@@ -1,9 +1,12 @@
 <template>
 
-  <div v-if="!currentCSV">
+  <div v-if="status == 'upload'">
     <input id="csv" type="file" @change="parseCSV">
   </div>
-  <div v-if="currentCSV">
+  <div v-if="status == 'parsing'">
+    Verarbeite Datei
+  </div>
+  <div v-if="status == 'ready'">
     {{ bookings.length }} Buchungen
 
     <p>
@@ -30,22 +33,56 @@
       Saldo: {{ calcSaldo(currentBookings()).toFixed(2) }}
     </p>
 
+    {{ sortColumn }}
+
     <table>
       <tr>
         <th>
           #
         </th>
-        <th>
+        <th @click="toggleSort('datum')">
           Datum
+          <span v-if="sortColumn == 'datum'">
+            <span v-if="sortOrder == 'asc'">
+              &darr;
+            </span>
+            <span v-if="sortOrder == 'desc'">
+              &uarr;
+            </span>
+          </span>
         </th>
-        <th>
+        <th @click="toggleSort('betrag')">
           Betrag
+          <span v-if="sortColumn == 'betrag'">
+            <span v-if="sortOrder == 'asc'">
+              &darr;
+            </span>
+            <span v-if="sortOrder == 'desc'">
+              &uarr;
+            </span>
+          </span>
         </th>
-        <th>
+        <th @click="toggleSort('konto')">
           Haben
+          <span v-if="sortColumn == 'konto'">
+            <span v-if="sortOrder == 'asc'">
+              &darr;
+            </span>
+            <span v-if="sortOrder == 'desc'">
+              &uarr;
+            </span>
+          </span>
         </th>
-        <th>
+        <th @click="toggleSort('gegenKonto')">
           Soll
+          <span v-if="sortColumn == 'gegenKonto'">
+            <span v-if="sortOrder == 'asc'">
+              &darr;
+            </span>
+            <span v-if="sortOrder == 'desc'">
+              &uarr;
+            </span>
+          </span>
         </th>
         <th>
           Buchungstext
@@ -53,8 +90,11 @@
         <th v-if="currentAccount">
           Saldo
         </th>
+        <th>
+          Validiert
+        </th>
       </tr>
-      <tr v-for="(booking, i) in currentBookings()">
+      <tr v-for="(booking, i) in currentBookings()" :key="i+'-booking'">
         <td>
           <small>
             {{ i+1 }}
@@ -80,6 +120,11 @@
         <td v-if="currentAccount">
           {{ booking.saldo.toFixed(2) }}
         </td>
+        <td @click="booking.validated = true">
+          <div :class="{'validated': booking.validated}">
+            &nbsp;
+          </div>
+        </td>
       </tr>
       <tfoot>
       </tfoot>
@@ -90,7 +135,6 @@
 <script lang="ts">
 
 import { defineComponent } from 'vue'
-import HelloWorld from './components/HelloWorld.vue'
 import {Booking} from './domain/Booking'
 import moment from 'moment'
 
@@ -187,10 +231,26 @@ export default defineComponent({
       currentMonth: null, 
       accounts: [""],
       currentAccount: null,
-      textSearch: null
+      textSearch: null,
+      status: "upload",
+      sortColumn: "datum",
+      sortOrder: "asc",
     }
   },
   methods: {
+    toggleSort(column:String) {
+      if (this.sortColumn == column) {
+        if (this.sortOrder == "asc") {
+          this.sortOrder = "desc"
+        } else {
+          this.sortOrder = "asc"
+        }
+        return;
+      }
+      this.sortColumn = column
+      this.sortOrder = "asc"
+      return;
+    },
     formatMonth(date) {
       return moment(date).format("MMM")
     },
@@ -224,6 +284,7 @@ export default defineComponent({
     currentBookings() {
       var result = [];
       var saldo = 0;
+      var me = this;
       for (var i in this.bookings) {
         var booking = this.bookings[i];
         if (this.currentMonth) {
@@ -238,7 +299,7 @@ export default defineComponent({
         }
 
         if (this.textSearch) {
-          if (booking.text.toUpperCase().indexOf(this.textSearch.toUpperCase()) == -1) {
+          if (booking.text && booking.text.toUpperCase().indexOf(this.textSearch.toUpperCase()) == -1) {
             continue;
           }
         }
@@ -254,14 +315,41 @@ export default defineComponent({
 
         result.push(booking)
       }
+
+      result = result.sort((a:Booking,b:Booking) => {
+
+        var sortOrderMultiplilkator = me.sortOrder == "asc" ? 1 : -1;
+
+        if (me.sortColumn == 'datum') {
+          return (a.datum.getTime() - b.datum.getTime()) * sortOrderMultiplilkator;
+        }
+        
+        if (me.sortColumn == 'betrag') {
+          return (a.betrag - b.betrag) * sortOrderMultiplilkator;
+        }
+        
+        if (me.sortColumn == 'konto') {
+          return a.konto.localeCompare(b.konto) * sortOrderMultiplilkator;
+        }
+        
+        if (me.sortColumn == 'gegenKonto') {
+          return a.gegenKonto.localeCompare(b.gegenKonto) * sortOrderMultiplilkator;
+        }
+        
+        return (a.datum.getTime() - b.datum.getTime()) * sortOrderMultiplilkator;
+      })
+
       return result;
     },
     parseCSV(data) {
       var me = this;
+      me.status = "parsing"
       var reader = new FileReader();
+      var newAccounts = []
       reader.onload = function () {
-        me.currentCSV = CSVToArray(reader.result, ";")
 
+        me.currentCSV = CSVToArray(reader.result, ";")
+        var bookings = []
         for (var i in me.currentCSV) {
           if (i > 2) {
             var line = me.currentCSV[i]
@@ -283,23 +371,26 @@ export default defineComponent({
               text: line[13]
             } as Booking;
 
-            if (me.accounts.indexOf(booking.konto) == -1) {
-              me.accounts.push(booking.konto)
+            if (newAccounts.indexOf(booking.konto) == -1) {
+              newAccounts.push(booking.konto)
             }
 
-            if (me.accounts.indexOf(booking.gegenKonto) == -1) {
-              me.accounts.push(booking.gegenKonto)
+            if (newAccounts.indexOf(booking.gegenKonto) == -1) {
+              newAccounts.push(booking.gegenKonto)
             }
 
-            me.bookings.push(booking)
+            bookings.push(booking)
           }          
-          me.accounts.sort()
         }
+        me.bookings = bookings
+        me.accounts = newAccounts;
+        me.accounts.sort()
+        me.status = "ready"
       };
       reader.readAsBinaryString(data.target.files[0])
     }
   },
-  components: {HelloWorld}
+  components: {}
 })
 
 </script>
@@ -310,6 +401,10 @@ export default defineComponent({
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: #2c3e50;
+}
+.validated {
+  background-color: green !important;
+  text-align: center;
 }
 tr:nth-child(2n+1) {
   background: #CCC;
