@@ -104,7 +104,7 @@
           {{ formatDate(booking.datum) }}
         </td>
         <td style="text-align: right">
-          <b v-if="booking.betrag > 0">
+          <b v-if="booking.betrag != 0">
             {{ booking.betrag.toFixed(2) }}
           </b>
         </td>
