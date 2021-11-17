@@ -351,7 +351,7 @@ export default defineComponent({
         me.currentCSV = CSVToArray(reader.result, ";")
         var bookings = []
         for (var i in me.currentCSV) {
-          if (i > 2) {
+          if (i > 1) {
             var line = me.currentCSV[i]
 
             var date
