@@ -62,6 +62,9 @@
             </span>
           </span>
         </th>
+        <th>
+          Steuerschlüssel
+        </th>
         <th @click="toggleSort('konto')">
           Haben
           <span v-if="sortColumn == 'konto'">
@@ -107,6 +110,9 @@
           <b v-if="booking.betrag != 0">
             {{ booking.betrag.toFixed(2) }}
           </b>
+        </td>
+        <td>
+          {{ booking.bu }}
         </td>
         <td @click="currentAccount = booking.konto">
           {{ booking.konto }}
